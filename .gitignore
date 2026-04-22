@@ -24,3 +24,7 @@ secrets/
 cosign.key
 
 .env
+
+trivy.exe
+
+*.exe
