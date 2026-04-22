@@ -30,3 +30,5 @@ trivy.exe
 *.exe
 
 logs/
+
+logs/
