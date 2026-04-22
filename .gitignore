@@ -28,3 +28,5 @@ cosign.key
 trivy.exe
 
 *.exe
+
+logs/
