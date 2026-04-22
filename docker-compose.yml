@@ -1,0 +1,125 @@
+version: '3.8'
+
+services:
+
+  # ── PostgreSQL Database ──────────────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_DB: ${DB_NAME:-bazaar}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-bazaar}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [backend-net]
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+
+  # ── Express Backend ──────────────────────────────────────────────────────
+  api:
+    networks: [frontend-net, backend-net]
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${API_PORT:-3001}:3001"
+    environment:
+      NODE_ENV: development
+      PORT: 3001
+      DATABASE_URL: postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@db:5432/${DB_NAME:-bazaar}
+      JWT_SECRET: ${JWT_SECRET:-change-me-to-a-long-random-secret}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3001/api/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    volumes:
+      # Bind Mount — host directory linked to container directory
+      # Logs written inside container appear on your host at ./logs/api/
+      - ./logs/api:/app/logs
+    tmpfs:
+      # tmpfs Mount — stored in RAM, auto-deleted when container stops
+      # Good for temporary processing files, zero disk I/O
+      - /app/tmp
+    secrets:
+      - jwt_secret   
+      - db_password
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'     # Cannot consume more than half a CPU core
+          memory: 256M     # Cannot consume more than 256MB RAM
+        reservations:
+          cpus: '0.25'     # Guaranteed minimum allocation
+          memory: 128M
+
+  # ── Seed job (runs once, then exits) ─────────────────────────────────────
+  seed:
+    networks: [backend-net]
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: node src/seed.js
+    environment:
+      DATABASE_URL: postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@db:5432/${DB_NAME:-bazaar}
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: "no"
+
+  # ── Next.js Frontend ─────────────────────────────────────────────────────
+  web:
+    networks: [frontend-net]
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3000}:3000"
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001/api}
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  frontend-net:
+    driver: bridge    
+                      
+  backend-net:
+    driver: bridge 
+
+secrets:
+  jwt_secret:
+    file: ./secrets/jwt_secret.txt   
+  db_password:                       
+    file: ./secrets/db_password.txt
