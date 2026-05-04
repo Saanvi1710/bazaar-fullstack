@@ -1,0 +1,50 @@
+version: "3.8"
+
+services:
+
+  api:
+    image: bazaar-fullstack-api
+    ports:
+      - "3001:3001"
+    networks:
+      - backend-net
+      - frontend-net
+    deploy:
+      replicas: 2
+      restart_policy:
+        condition: on-failure
+
+  web:
+    image: bazaar-fullstack-web
+    ports:
+      - "3000:3000"
+    networks:
+      - frontend-net
+    deploy:
+      replicas: 2
+
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    networks:
+      - backend-net
+    deploy:
+      replicas: 1
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3002:3000"
+    networks:
+      - frontend-net
+    deploy:
+      replicas: 1
+
+networks:
+  frontend-net:
+    driver: overlay
+  backend-net:
+    driver: overlay

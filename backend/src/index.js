@@ -1,3 +1,5 @@
+const client = require("prom-client");
+
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
@@ -11,6 +13,8 @@ const categoriesRouter = require("./routes/categories");
 const cartRouter = require("./routes/cart");
 
 const app = express();
+// Collect default Node.js metrics
+client.collectDefaultMetrics();
 const PORT = process.env.PORT || 3001;
 
 // ── Log Directory Setup ──────────────────────────────────────────────────────
@@ -45,6 +49,21 @@ app.use((req, res, next) => {
 });
 // ────────────────────────────────────────────────────────────────────────────
 
+const httpRequestsTotal = new client.Counter({
+  name: "bazaar_http_requests_total",
+  help: "Total number of HTTP requests",
+  labelNames: ["method", "route", "status_code"],
+});
+
+app.use((req, res, next) => {
+  res.on("finish", () => {
+    httpRequestsTotal
+      .labels(req.method, req.path, String(res.statusCode))
+      .inc();
+  });
+  next();
+});
+
 // Routes
 app.use("/api/health", healthRouter);
 app.use("/api/auth", authRouter);
@@ -52,10 +71,7 @@ app.use("/api/products", productsRouter);
 app.use("/api/categories", categoriesRouter);
 app.use("/api/cart", cartRouter);
 
-// 404 handler
-app.use((req, res) => {
-  res.status(404).json({ error: "Route not found" });
-});
+
 
 // Global error handler
 app.use((err, req, res, next) => {
@@ -65,4 +81,14 @@ app.use((err, req, res, next) => {
 
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Backend running on http://0.0.0.0:${PORT}`);
+});
+
+app.get("/metrics", async (req, res) => {
+  res.set("Content-Type", client.register.contentType);
+  res.end(await client.register.metrics());
+});
+
+// 404 handler
+app.use((req, res) => {
+  res.status(404).json({ error: "Route not found" });
 });

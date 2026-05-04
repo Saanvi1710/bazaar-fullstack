@@ -106,10 +106,39 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+  
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: bazaar-prometheus
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+    ports:
+      - "9090:9090"
+    networks:
+      - frontend-net
+      - backend-net
+    depends_on:
+      - api
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: bazaar-grafana
+    ports:
+      - "3002:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+    networks:
+      - frontend-net
+    depends_on:
+      - prometheus
 
 volumes:
   postgres_data:
     driver: local
+  grafana_data:
 
 networks:
   frontend-net:
@@ -123,3 +152,4 @@ secrets:
     file: ./secrets/jwt_secret.txt   
   db_password:                       
     file: ./secrets/db_password.txt
+  

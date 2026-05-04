@@ -32,3 +32,5 @@ trivy.exe
 logs/
 
 logs/
+
+!cosign.pub
